@@ -31,47 +31,54 @@ class CBSImporter():
     def __init__(self, connection):
         self._connection = connection
 
-    def import_area(self, shape_reader, area_type, has_parent):
+    def import_area(self, shapefile_reader, area_type, has_parent):
         cursor = self._connection.cursor()
         cursor.execute("INSERT OR IGNORE INTO AreaType (AreaType) VALUES (?)", (area_type,))
 
-        for record, shape in zip(shape_reader.iterRecords(), shape_reader.iterShapes()):
+        for record, shape in zip(shapefile_reader.iterRecords(), shapefile_reader.iterShapes()):
             code, name = record[0].strip(), record[1].strip()
             parent_code = record[3].strip() if has_parent else None
 
-            if len(name) == 0:
+            if len(name) == 0 or self._area_exists(code, cursor):
                 continue
 
-            cursor.execute("SELECT EXISTS(SELECT Code FROM Area WHERE Code = ?)", (code,))
-            if cursor.fetchone()[0] > 0:
-                continue
-
-            cursor.execute(
-                "INSERT INTO Area (Name, Code, AreaTypeId, ParentAreaId) "
-                "SELECT ?, ?, (SELECT AreaTypeId FROM AreaType WHERE AreaType = ?), (SELECT AreaId FROM Area WHERE Code = ?)",
-                (name, code, area_type, parent_code)
-            )
-            area_id = cursor.lastrowid
-
-            cursor.execute(
-                "INSERT INTO Shape (AreaId) VALUES (?)",
-                (area_id,)
-            )
-            shape_id = cursor.lastrowid
-
-            convert_to_geocode_visitor = ConvertToGeocodeVisitor()
-            for point_index in range(len(shape.points)):
-                rd_coordinate = RD(*shape.points[point_index])
-                geocode_coordinate = convert_to_geocode_visitor.visit_rd(rd_coordinate)
-                cursor.execute(
-                    "INSERT OR IGNORE INTO Coordinate (Geocode_Latitude, Geocode_Longitude, RD_X, RD_Y) VALUES (?, ?, ?, ?)",
-                    tuple(geocode_coordinate) + tuple(rd_coordinate)
-                )
-
-                cursor.execute(
-                    "INSERT INTO ShapeCoordinate (ShapeId, CoordinateId, Ordering) "
-                    "SELECT ?, (SELECT CoordinateId FROM Coordinate WHERE (Geocode_Latitude = ? AND Geocode_Longitude = ?) OR (RD_X = ? AND RD_Y = ?) LIMIT 1), ?",
-                    (shape_id, geocode_coordinate.latitude, geocode_coordinate.longitude, rd_coordinate.x, rd_coordinate.y, point_index)
-                )
+            area_id = self._insert_area(name, code, area_type, parent_code, cursor)
+            shape_id = self._insert_shape(area_id, cursor)
+            self._insert_coordinates(shape_id, shape.points, cursor)
 
         self._connection.commit()
+
+    def _area_exists(self, area_code, cursor):
+        cursor.execute("SELECT EXISTS(SELECT Code FROM Area WHERE Code = ?)", (area_code,))
+        return cursor.fetchone()[0] > 0
+
+    def _insert_area(self, name, code, area_type, parent_code, cursor):
+        cursor.execute(
+            "INSERT INTO Area (Name, Code, AreaTypeId, ParentAreaId) "
+            "SELECT ?, ?, (SELECT AreaTypeId FROM AreaType WHERE AreaType = ?), (SELECT AreaId FROM Area WHERE Code = ?)",
+            (name, code, area_type, parent_code)
+        )
+        return cursor.lastrowid
+
+    def _insert_shape(self, area_id, cursor):
+        cursor.execute(
+            "INSERT INTO Shape (AreaId) VALUES (?)",
+            (area_id,)
+        )
+        return cursor.lastrowid
+
+    def _insert_coordinates(self, shape_id, points, cursor):
+        convert_to_geocode_visitor = ConvertToGeocodeVisitor()
+        for point_index in range(len(points)):
+            rd_coordinate = RD(*points[point_index])
+            geocode_coordinate = convert_to_geocode_visitor.visit_rd(rd_coordinate)
+            cursor.execute(
+                "INSERT OR IGNORE INTO Coordinate (Geocode_Latitude, Geocode_Longitude, RD_X, RD_Y) VALUES (?, ?, ?, ?)",
+                tuple(geocode_coordinate) + tuple(rd_coordinate)
+            )
+
+            cursor.execute(
+                "INSERT INTO ShapeCoordinate (ShapeId, CoordinateId, Ordering) "
+                "SELECT ?, (SELECT CoordinateId FROM Coordinate WHERE (Geocode_Latitude = ? AND Geocode_Longitude = ?) OR (RD_X = ? AND RD_Y = ?) LIMIT 1), ?",
+                (shape_id,) + tuple(geocode_coordinate) + tuple(rd_coordinate) + (point_index,)
+            )
