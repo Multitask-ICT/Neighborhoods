@@ -49,29 +49,29 @@ class CBSImporter():
         self._connection.commit()
 
     def _attach_area_type(self, area_type, cursor):
-        cursor.execute("SELECT AreaTypeId FROM AreaType WHERE AreaType = ?", (area_type,))
+        cursor.execute("SELECT area_type_id FROM area_type WHERE area_type = ?", (area_type,))
         area_type_id = cursor.fetchone()
         if area_type_id is not None:
             return area_type_id[0]
         else:
-            cursor.execute("INSERT INTO AreaType (AreaType) VALUES (?)", (area_type,))
+            cursor.execute("INSERT INTO area_type (area_type) VALUES (?)", (area_type,))
             return cursor.lastrowid
 
     def _area_exists(self, area_code, cursor):
-        cursor.execute("SELECT EXISTS(SELECT Code FROM Area WHERE Code = ?)", (area_code,))
+        cursor.execute("SELECT EXISTS(SELECT code FROM area WHERE code = ?)", (area_code,))
         return cursor.fetchone()[0] > 0
 
     def _insert_area(self, name, code, area_type_id, parent_code, cursor):
         cursor.execute(
-            "INSERT INTO Area (Name, Code, AreaTypeId, ParentAreaId) "
-            "SELECT ?, ?, ?, (SELECT AreaId FROM Area WHERE Code = ?)",
+            "INSERT INTO area (name, code, area_type_id, parent_area_id) "
+            "SELECT ?, ?, ?, (SELECT area_id FROM area WHERE code = ?)",
             (name, code, area_type_id, parent_code)
         )
         return cursor.lastrowid
 
     def _insert_shape(self, area_id, cursor):
         cursor.execute(
-            "INSERT INTO Shape (AreaId) VALUES (?)",
+            "INSERT INTO shape (area_id) VALUES (?)",
             (area_id,)
         )
         return cursor.lastrowid
@@ -85,16 +85,16 @@ class CBSImporter():
             coordinate_id = self._attach_coordinate(geocode_coordinate, rd_coordinate, cursor)
 
             cursor.execute(
-                "INSERT INTO ShapeCoordinate (ShapeId, CoordinateId, Ordering) "
+                "INSERT INTO shape_coordinate (shape_id, coordinate_id, ordering) "
                 "SELECT ?, ?, ?",
                 (shape_id, coordinate_id, point_index)
             )
 
     def _attach_coordinate(self, geocode_coordinate, rd_coordinate, cursor):
         cursor.execute(
-            "SELECT CoordinateId FROM Coordinate "
-            "WHERE (Geocode_Latitude = ? AND Geocode_Longitude = ?) "
-            "OR    (RD_X = ? AND RD_Y = ?) "
+            "SELECT coordinate_id FROM coordinate "
+            "WHERE (geocode_latitude = ? AND geocode_longitude = ?) "
+            "OR    (rd_x = ? AND rd_y = ?) "
             "LIMIT 1",
             tuple(geocode_coordinate) + tuple(rd_coordinate)
         )
@@ -103,7 +103,7 @@ class CBSImporter():
             return coordinate_id[0]
         else:
             cursor.execute(
-                "INSERT INTO Coordinate (Geocode_Latitude, Geocode_Longitude, RD_X, RD_Y) "
+                "INSERT INTO coordinate (geocode_latitude, geocode_longitude, rd_x, rd_y) "
                 "VALUES (?, ?, ?, ?)",
                 tuple(geocode_coordinate) + tuple(rd_coordinate)
             )
