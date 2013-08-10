@@ -43,8 +43,7 @@ class CBSImporter():
                 continue
 
             area_id = self._insert_area(name, code, area_type_id, parent_code, cursor)
-            shape_id = self._insert_shape(area_id, cursor)
-            self._insert_coordinates(shape_id, shape.points, cursor)
+            self._insert_shape(area_id, shape.points, cursor)
 
         self._connection.commit()
 
@@ -69,12 +68,14 @@ class CBSImporter():
         )
         return cursor.lastrowid
 
-    def _insert_shape(self, area_id, cursor):
+    def _insert_shape(self, area_id, points, cursor):
         cursor.execute(
             "INSERT INTO shape (area_id) VALUES (?)",
             (area_id,)
         )
-        return cursor.lastrowid
+        shape_id = cursor.lastrowid
+
+        self._insert_coordinates(shape_id, points, cursor)
 
     def _insert_coordinates(self, shape_id, points, cursor):
         convert_to_geocode_visitor = ConvertToGeocodeVisitor()
