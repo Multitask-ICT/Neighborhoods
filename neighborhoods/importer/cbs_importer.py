@@ -71,7 +71,13 @@ class CBSImporter():
         return cursor.lastrowid
 
     def _split_detached_shapes(self, points):
-        return [points]
+        if not any(points):
+            return []
+        elif points[0] == points[-1]:
+            return [points]
+        else:
+            shape_endpoint = points.index(points[0], 1)
+            return [points[:shape_endpoint + 1]] + self._split_detached_shapes(points[shape_endpoint + 1:])
 
     def _insert_shape(self, area_id, points, cursor):
         cursor.execute(
