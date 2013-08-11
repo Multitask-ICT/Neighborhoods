@@ -43,7 +43,9 @@ class CBSImporter():
                 continue
 
             area_id = self._insert_area(name, code, area_type_id, parent_code, cursor)
-            self._insert_shape(area_id, shape.points, cursor)
+
+            for shape in self._split_detached_shapes(shape.points):
+                self._insert_shape(area_id, shape, cursor)
 
         self._connection.commit()
 
@@ -67,6 +69,9 @@ class CBSImporter():
             (name, code, area_type_id, parent_code)
         )
         return cursor.lastrowid
+
+    def _split_detached_shapes(self, points):
+        return [points]
 
     def _insert_shape(self, area_id, points, cursor):
         cursor.execute(
